@@ -9,7 +9,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'ometv_secret_key_2024';
 
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || 'AUfjdwuyzpElyneQJ8PaT4hLVNSzZc-yK4SS7bPQcBFjVumw_s-VlSwDm1X1mng0OCo3OkfTHpeIeGys';
 const PAYPAL_SECRET = process.env.PAYPAL_SECRET || 'ELd7AwBHUx09Lm31oNJxIB-77lxOILVFauvG99rjG8fQMZ9gfL3gLKBiEnA5J1iXKW5a_e0Of_p09yCF';
-const PAYPAL_BASE = 'https://api-m.sandbox.paypal.com';
+const PAYPAL_BASE = 'https://api-m.paypal.com';
 
 // Tasa: 100 monedas = $0.75
 const COINS_TO_USD = 0.0075;
