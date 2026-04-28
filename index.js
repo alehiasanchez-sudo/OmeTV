@@ -7,6 +7,9 @@ const jwt = require('jsonwebtoken');
 
 const authRoutes = require('./routes/auth');
 const reportRoutes = require('./routes/reports');
+const { router: coinsRouter } = require('./routes/coins');
+const { router: giftsRouter } = require('./routes/gifts');
+const withdrawRouter = require('./routes/withdraw');
 
 const app = express();
 
@@ -36,6 +39,9 @@ mongoose.connect(MONGO_URI)
 // Rutas REST
 app.use('/api/auth', authRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/coins', coinsRouter);
+app.use('/api/gifts', giftsRouter);
+app.use('/api/withdraw', withdrawRouter);
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -181,6 +187,14 @@ io.on('connection', (socket) => {
     const pair = activePairs[socket.id];
     if (pair) {
       io.to(pair.partnerId).emit('chat_message', { text: msg, from: 'stranger' });
+    }
+  });
+
+  // Notificar regalo en tiempo real
+  socket.on('gift_sent', (data) => {
+    const pair = activePairs[socket.id];
+    if (pair) {
+      io.to(pair.partnerId).emit('gift_received', data);
     }
   });
 
