@@ -6,10 +6,11 @@ const Transaction = require('../models/Transaction');
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'ometv_secret_key_2024';
 
-const PLATFORM_CUT = 0.25; // 25% para la plataforma
-const CREATOR_CUT = 0.75;  // 75% para el receptor
+const PLATFORM_CUT = 0.50; // 50% para la plataforma
+const CREATOR_CUT = 0.50;  // 50% para el receptor
 
 const GIFTS = [
+  { id: 'like',    emoji: '👍', name: 'Like',       cost: 1   },
   { id: 'rose',    emoji: '🌹', name: 'Rosa',      cost: 10  },
   { id: 'heart',   emoji: '❤️', name: 'Corazón',   cost: 25  },
   { id: 'diamond', emoji: '💎', name: 'Diamante',  cost: 100 },
@@ -51,8 +52,8 @@ router.post('/send', auth, async (req, res) => {
     }
 
     // Calcular corte
-    const creatorAmount = Math.floor(gift.cost * CREATOR_CUT);  // 75%
-    const platformAmount = gift.cost - creatorAmount;            // 25%
+    const creatorAmount = Math.floor(gift.cost * CREATOR_CUT);  // 50%
+    const platformAmount = gift.cost - creatorAmount;            // 50%
 
     // Descontar del emisor
     senderCoins.balance -= gift.cost;
