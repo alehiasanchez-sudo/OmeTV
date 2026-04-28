@@ -10,7 +10,7 @@ const reportRoutes = require('./routes/reports');
 
 const app = express();
 app.use(cors({
-  origin: ['https://tr-liveclient.vercel.app', 'http://localhost:3000'],
+  origin: ['https://ometvclient.vercel.app', 'https://tr-liveclient.vercel.app', 'http://localhost:3000'],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -31,7 +31,7 @@ app.use('/api/reports', reportRoutes);
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: ['https://tr-liveclient.vercel.app', 'http://localhost:3000'],
+    origin: ['https://ometvclient.vercel.app', 'https://tr-liveclient.vercel.app', 'http://localhost:3000'],
     methods: ['GET', 'POST']
   }
 });
@@ -82,12 +82,16 @@ function findPartner(socket, userInfo) {
       initiator: true,
       partnerUsername: candidate.username,
       partnerCountry: candidate.country,
-      partnerUserId: candidate.userId
+      partnerUserId: candidate.userId,
+      partnerGender: candidate.gender
     });
     candidateSocket.emit('partner_found', {
       initiator: false,
       partnerUsername: userInfo.username,
       partnerCountry: userInfo.country,
+      partnerUserId: userInfo.userId,
+      partnerGender: userInfo.gender
+    });
       partnerUserId: userInfo.userId
     });
 
@@ -112,7 +116,8 @@ io.on('connection', (socket) => {
       connectedUsers[socket.id] = {
         userId: decoded.userId,
         username: decoded.username || 'Usuario',
-        country: decoded.country || 'Unknown'
+        country: decoded.country || 'Unknown',
+        gender: decoded.gender || 'other'
       };
       socket.emit('authenticated');
     } catch {
@@ -181,4 +186,3 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
-
