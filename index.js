@@ -92,8 +92,6 @@ function findPartner(socket, userInfo) {
       partnerUserId: userInfo.userId,
       partnerGender: userInfo.gender
     });
-      partnerUserId: userInfo.userId
-    });
 
     console.log(`Pareja: ${userInfo.username}(${userInfo.country}) <-> ${candidate.username}(${candidate.country})`);
   } else {
