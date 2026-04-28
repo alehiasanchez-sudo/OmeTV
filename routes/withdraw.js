@@ -13,7 +13,7 @@ const PAYPAL_BASE = 'https://api-m.paypal.com';
 
 // Tasa: 100 monedas = $0.75
 const COINS_TO_USD = 0.0075;
-const MIN_WITHDRAW = 500; // mínimo 500 monedas = $3.75
+const MIN_WITHDRAW = 133; // mínimo 133 monedas = $1.00
 
 const auth = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
