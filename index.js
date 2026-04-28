@@ -10,7 +10,7 @@ const reportRoutes = require('./routes/reports');
 
 const app = express();
 app.use(cors({
-  origin: ['https://ometvclient.vercel.app', 'http://localhost:3000'],
+  origin: ['https://tr-liveclient.vercel.app', 'http://localhost:3000'],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -31,7 +31,7 @@ app.use('/api/reports', reportRoutes);
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: ['https://ometvclient.vercel.app', 'http://localhost:3000'],
+    origin: ['https://tr-liveclient.vercel.app', 'http://localhost:3000'],
     methods: ['GET', 'POST']
   }
 });
