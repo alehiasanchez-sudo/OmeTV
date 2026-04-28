@@ -2,121 +2,175 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+
+const authRoutes = require('./routes/auth');
+const reportRoutes = require('./routes/reports');
 
 const app = express();
 app.use(cors());
+app.use(express.json());
+
+const JWT_SECRET = process.env.JWT_SECRET || 'ometv_secret_key_2024';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://THEROSARD:Terribles18161993@cluster0.b9honaj.mongodb.net/?appName=Cluster0';
+
+// Conectar MongoDB
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('MongoDB conectado'))
+  .catch(err => console.error('Error MongoDB:', err));
+
+// Rutas REST
+app.use('/api/auth', authRoutes);
+app.use('/api/reports', reportRoutes);
 
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] }
 });
 
+// ── Matchmaking ──
+// Cola por país: { socketId, userId, country, username }
 let waitingQueue = [];
-let activePairs = {};
+let activePairs = {}; // socketId -> { partnerId, partnerUserId, partnerUsername }
 
 function removeFromQueue(socketId) {
-  waitingQueue = waitingQueue.filter(id => id !== socketId);
+  waitingQueue = waitingQueue.filter(u => u.socketId !== socketId);
 }
 
 function breakPair(socketId) {
-  const partnerId = activePairs[socketId];
-  if (partnerId) {
+  const pair = activePairs[socketId];
+  if (pair) {
     delete activePairs[socketId];
-    delete activePairs[partnerId];
+    delete activePairs[pair.partnerId];
   }
-  return partnerId;
+  return pair;
 }
 
-function findPartner(socket) {
-  // Evitar duplicados en cola
+function findPartner(socket, userInfo) {
   removeFromQueue(socket.id);
 
-  // Buscar alguien válido en la cola (que no sea yo mismo)
-  while (waitingQueue.length > 0) {
-    const candidateId = waitingQueue.shift();
-    if (candidateId === socket.id) continue; // nunca emparejarse consigo mismo
-    const candidateSocket = io.sockets.sockets.get(candidateId);
-    if (!candidateSocket) continue; // socket ya no existe
+  // Primero buscar del mismo país
+  let idx = waitingQueue.findIndex(u => u.socketId !== socket.id && u.country === userInfo.country);
 
-    // Pareja válida encontrada
-    activePairs[socket.id] = candidateId;
-    activePairs[candidateId] = socket.id;
-
-    socket.emit('partner_found', { initiator: true });
-    candidateSocket.emit('partner_found', { initiator: false });
-
-    console.log(`Pareja formada: ${socket.id} <-> ${candidateId}`);
-    return;
+  // Si no hay del mismo país, buscar cualquiera
+  if (idx === -1) {
+    idx = waitingQueue.findIndex(u => u.socketId !== socket.id);
   }
 
-  // Nadie disponible, entrar a la cola
-  waitingQueue.push(socket.id);
-  socket.emit('waiting');
-  console.log(`En espera: ${socket.id}`);
+  if (idx !== -1) {
+    const candidate = waitingQueue.splice(idx, 1)[0];
+    const candidateSocket = io.sockets.sockets.get(candidate.socketId);
+
+    if (!candidateSocket) {
+      // Socket ya no existe, intentar de nuevo
+      findPartner(socket, userInfo);
+      return;
+    }
+
+    activePairs[socket.id] = { partnerId: candidate.socketId, partnerUserId: candidate.userId, partnerUsername: candidate.username };
+    activePairs[candidate.socketId] = { partnerId: socket.id, partnerUserId: userInfo.userId, partnerUsername: userInfo.username };
+
+    socket.emit('partner_found', {
+      initiator: true,
+      partnerUsername: candidate.username,
+      partnerCountry: candidate.country,
+      partnerUserId: candidate.userId
+    });
+    candidateSocket.emit('partner_found', {
+      initiator: false,
+      partnerUsername: userInfo.username,
+      partnerCountry: userInfo.country,
+      partnerUserId: userInfo.userId
+    });
+
+    console.log(`Pareja: ${userInfo.username}(${userInfo.country}) <-> ${candidate.username}(${candidate.country})`);
+  } else {
+    waitingQueue.push({ socketId: socket.id, ...userInfo });
+    socket.emit('waiting');
+    console.log(`En espera: ${userInfo.username} (${userInfo.country})`);
+  }
 }
+
+// Mapa socketId -> userInfo
+const connectedUsers = {};
 
 io.on('connection', (socket) => {
   console.log(`Conectado: ${socket.id}`);
 
-  socket.on('find_partner', () => {
-    // Si ya tiene pareja activa, ignorar
-    if (activePairs[socket.id]) return;
-    findPartner(socket);
-  });
-
-  socket.on('signal', (data) => {
-    const partnerId = activePairs[socket.id];
-    if (partnerId) {
-      io.to(partnerId).emit('signal', { ...data, from: socket.id });
+  // Autenticar socket con JWT
+  socket.on('authenticate', (token) => {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      connectedUsers[socket.id] = {
+        userId: decoded.userId,
+        username: decoded.username || 'Usuario',
+        country: decoded.country || 'Unknown'
+      };
+      socket.emit('authenticated');
+    } catch {
+      socket.emit('auth_error', 'Token inválido');
     }
   });
 
-  // "Siguiente": ambos buscan nueva pareja
+  socket.on('find_partner', () => {
+    const userInfo = connectedUsers[socket.id];
+    if (!userInfo) return socket.emit('auth_error', 'No autenticado');
+    if (activePairs[socket.id]) return;
+    findPartner(socket, userInfo);
+  });
+
+  socket.on('signal', (data) => {
+    const pair = activePairs[socket.id];
+    if (pair) {
+      io.to(pair.partnerId).emit('signal', { ...data, from: socket.id });
+    }
+  });
+
   socket.on('next', () => {
-    const partnerId = breakPair(socket.id);
+    const pair = breakPair(socket.id);
+    const userInfo = connectedUsers[socket.id];
+    if (!userInfo) return;
 
-    // Yo busco nueva pareja
-    findPartner(socket);
+    findPartner(socket, userInfo);
 
-    // Mi compañero también busca nueva pareja automáticamente
-    if (partnerId) {
-      const partnerSocket = io.sockets.sockets.get(partnerId);
+    if (pair) {
+      const partnerSocket = io.sockets.sockets.get(pair.partnerId);
       if (partnerSocket) {
-        // Notificar al compañero para que limpie su WebRTC
         partnerSocket.emit('partner_skipped');
-        // El servidor lo mete a la cola directamente
-        findPartner(partnerSocket);
+        const partnerInfo = connectedUsers[pair.partnerId];
+        if (partnerInfo) findPartner(partnerSocket, partnerInfo);
       }
     }
   });
 
-  // "Detener": solo yo me desconecto, el otro queda en idle
   socket.on('stop', () => {
-    const partnerId = breakPair(socket.id);
+    const pair = breakPair(socket.id);
     removeFromQueue(socket.id);
-    if (partnerId) {
-      io.to(partnerId).emit('partner_disconnected');
+    if (pair) {
+      io.to(pair.partnerId).emit('partner_disconnected');
     }
   });
 
   socket.on('chat_message', (msg) => {
-    const partnerId = activePairs[socket.id];
-    if (partnerId) {
-      io.to(partnerId).emit('chat_message', { text: msg, from: 'stranger' });
+    const pair = activePairs[socket.id];
+    if (pair) {
+      io.to(pair.partnerId).emit('chat_message', { text: msg, from: 'stranger' });
     }
   });
 
   socket.on('disconnect', () => {
     console.log(`Desconectado: ${socket.id}`);
     removeFromQueue(socket.id);
-    const partnerId = breakPair(socket.id);
-    if (partnerId) {
-      io.to(partnerId).emit('partner_disconnected');
+    const pair = breakPair(socket.id);
+    if (pair) {
+      io.to(pair.partnerId).emit('partner_disconnected');
     }
+    delete connectedUsers[socket.id];
   });
 });
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
