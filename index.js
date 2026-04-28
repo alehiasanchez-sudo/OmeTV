@@ -9,11 +9,20 @@ const authRoutes = require('./routes/auth');
 const reportRoutes = require('./routes/reports');
 
 const app = express();
-app.use(cors({
-  origin: ['https://ometvclient.vercel.app', 'https://tr-liveclient.vercel.app', 'http://localhost:3000'],
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || /\.vercel\.app$/.test(origin) || origin === 'http://localhost:3000') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
-}));
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ometv_secret_key_2024';
@@ -31,7 +40,13 @@ app.use('/api/reports', reportRoutes);
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: ['https://ometvclient.vercel.app', 'https://tr-liveclient.vercel.app', 'http://localhost:3000'],
+    origin: (origin, callback) => {
+      if (!origin || /\.vercel\.app$/.test(origin) || origin === 'http://localhost:3000') {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed'));
+      }
+    },
     methods: ['GET', 'POST']
   }
 });
