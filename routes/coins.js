@@ -7,8 +7,8 @@ const Transaction = require('../models/Transaction');
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'ometv_secret_key_2024';
 
-const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || 'AdyTjr6UGD1sl7w56MNIsGibDRqaMarUbD5Fm-fPWrQttxUMBSMzUZk2mj1OzmMw_2FjHY7qkXKKMXb8';
-const PAYPAL_SECRET = process.env.PAYPAL_SECRET || 'EFBq5E7ID7INetkryKTMiTe72SsAMu_Qj6UZFdzXSyVQ0Tw4yPomZ4qg7QMNL-KMfeZ1vfT3rEtBXDp_';
+const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || 'AUfjdwuyzpElyneQJ8PaT4hLVNSzZc-yK4SS7bPQcBFjVumw_s-VlSwDm1X1mng0OCo3OkfTHpeIeGys';
+const PAYPAL_SECRET = process.env.PAYPAL_SECRET || 'ELd7AwBHUx09Lm31oNJxIB-77lxOILVFauvG99rjG8fQMZ9gfL3gLKBiEnA5J1iXKW5a_e0Of_p09yCF';
 const PAYPAL_BASE = 'https://api-m.paypal.com';
 
 // Paquetes de monedas
