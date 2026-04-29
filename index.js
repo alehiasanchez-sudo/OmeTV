@@ -14,15 +14,10 @@ const withdrawRouter = require('./routes/withdraw');
 const app = express();
 
 const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin || /\.vercel\.app$/.test(origin) || origin === 'http://localhost:3000') {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true, // Acepta cualquier origen (apps móviles + web)
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 };
 
 app.use(cors(corsOptions));
@@ -46,14 +41,9 @@ app.use('/api/withdraw', withdrawRouter);
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: (origin, callback) => {
-      if (!origin || /\.vercel\.app$/.test(origin) || origin === 'http://localhost:3000') {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed'));
-      }
-    },
-    methods: ['GET', 'POST']
+    origin: true, // Acepta cualquier origen
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 
