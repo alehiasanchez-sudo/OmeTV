@@ -1,14 +1,12 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
-const mongoose = require('mongoose');
 const Coins = require('../models/Coins');
 const Transaction = require('../models/Transaction');
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'ometv_secret_key_2024';
 
-const PLATFORM_CUT = 0.50;
-const CREATOR_CUT  = 0.50;
+const CREATOR_CUT = 0.50;
 
 const GIFTS = [
   { id: 'like',    emoji: '👍', name: 'Like',      cost: 1   },
@@ -36,79 +34,76 @@ router.get('/list', (req, res) => {
 
 // POST /api/gifts/send
 router.post('/send', auth, async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     const { toUserId, giftId } = req.body;
     const gift = GIFTS.find(g => g.id === giftId);
 
     if (!gift)     return res.status(400).json({ error: 'Regalo inválido' });
     if (!toUserId) return res.status(400).json({ error: 'Receptor requerido' });
-    if (toUserId === req.user.userId)
+    if (String(toUserId) === String(req.user.userId))
       return res.status(400).json({ error: 'No puedes enviarte regalos a ti mismo' });
 
     const creatorAmount  = Math.floor(gift.cost * CREATOR_CUT);
     const platformAmount = gift.cost - creatorAmount;
 
-    // ── Descontar del emisor de forma ATÓMICA ──
-    // Solo descuenta si tiene suficiente balance (balance >= cost)
+    // ── Descontar del emisor ATÓMICAMENTE ──
+    // Solo descuenta si balance >= cost (condición en el query)
     const updatedSender = await Coins.findOneAndUpdate(
       { userId: req.user.userId, balance: { $gte: gift.cost } },
       { $inc: { balance: -gift.cost } },
-      { new: true, session }
+      { new: true }
     );
 
     if (!updatedSender) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ error: 'Monedas insuficientes' });
+      // Verificar si existe el documento o si no tiene saldo
+      const senderCoins = await Coins.findOne({ userId: req.user.userId });
+      if (!senderCoins) {
+        return res.status(400).json({ error: 'No tienes monedas' });
+      }
+      return res.status(400).json({ error: `Monedas insuficientes. Tienes ${senderCoins.balance} 🪙` });
     }
 
-    // ── Acreditar al receptor de forma ATÓMICA ──
-    // upsert: crea el documento si no existe
+    // ── Acreditar al receptor ATÓMICAMENTE (upsert) ──
     const updatedReceiver = await Coins.findOneAndUpdate(
       { userId: toUserId },
       { $inc: { balance: creatorAmount, totalEarned: creatorAmount } },
-      { new: true, upsert: true, session }
+      { new: true, upsert: true }
     );
 
-    // ── Registrar transacciones ──
-    await Transaction.create([
-      {
-        fromUser: req.user.userId,
-        toUser: toUserId,
-        type: 'gift_sent',
-        amount: gift.cost,
-        giftType: giftId
-      },
-      {
-        fromUser: req.user.userId,
-        toUser: toUserId,
-        type: 'gift_received',
-        amount: creatorAmount,
-        giftType: giftId
-      }
-    ], { session });
-
-    // ── Confirmar transacción ──
-    await session.commitTransaction();
-    session.endSession();
+    // ── Registrar transacciones (no crítico, no bloquea el flujo) ──
+    try {
+      await Transaction.insertMany([
+        {
+          fromUser: req.user.userId,
+          toUser: toUserId,
+          type: 'gift_sent',
+          amount: gift.cost,
+          giftType: giftId
+        },
+        {
+          fromUser: req.user.userId,
+          toUser: toUserId,
+          type: 'gift_received',
+          amount: creatorAmount,
+          giftType: giftId
+        }
+      ]);
+    } catch (txErr) {
+      // Si falla el log de transacción, no revertimos — el pago ya se hizo
+      console.error('Transaction log error (non-critical):', txErr.message);
+    }
 
     res.json({
       success: true,
       gift,
       senderBalance: updatedSender.balance,
-      receiverBalance: updatedReceiver.balance,
       creatorReceived: creatorAmount,
       platformReceived: platformAmount
     });
 
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
     console.error('Gift error:', err);
-    res.status(500).json({ error: 'Error enviando regalo' });
+    res.status(500).json({ error: 'Error enviando regalo: ' + err.message });
   }
 });
 
