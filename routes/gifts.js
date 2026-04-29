@@ -36,6 +36,9 @@ router.get('/list', (req, res) => {
 router.post('/send', auth, async (req, res) => {
   try {
     const { toUserId, giftId } = req.body;
+    
+    console.log('Gift send request:', { toUserId, giftId, fromUser: req.user.userId });
+    
     const gift = GIFTS.find(g => g.id === giftId);
 
     if (!gift)     return res.status(400).json({ error: 'Regalo inválido' });
@@ -46,21 +49,31 @@ router.post('/send', auth, async (req, res) => {
     const creatorAmount  = Math.floor(gift.cost * CREATOR_CUT);
     const platformAmount = gift.cost - creatorAmount;
 
+    // Verificar que el emisor existe y tiene saldo
+    const senderCoins = await Coins.findOne({ userId: req.user.userId });
+    console.log('Sender coins:', senderCoins);
+    
+    if (!senderCoins) {
+      // Crear documento de monedas si no existe
+      await Coins.create({ userId: req.user.userId, balance: 0 });
+      return res.status(400).json({ error: 'No tienes monedas' });
+    }
+    
+    if (senderCoins.balance < gift.cost) {
+      return res.status(400).json({ error: `Monedas insuficientes. Tienes ${senderCoins.balance} 🪙, necesitas ${gift.cost} 🪙` });
+    }
+
     // ── Descontar del emisor ATÓMICAMENTE ──
-    // Solo descuenta si balance >= cost (condición en el query)
     const updatedSender = await Coins.findOneAndUpdate(
       { userId: req.user.userId, balance: { $gte: gift.cost } },
       { $inc: { balance: -gift.cost } },
       { new: true }
     );
 
+    console.log('Updated sender:', updatedSender);
+
     if (!updatedSender) {
-      // Verificar si existe el documento o si no tiene saldo
-      const senderCoins = await Coins.findOne({ userId: req.user.userId });
-      if (!senderCoins) {
-        return res.status(400).json({ error: 'No tienes monedas' });
-      }
-      return res.status(400).json({ error: `Monedas insuficientes. Tienes ${senderCoins.balance} 🪙` });
+      return res.status(400).json({ error: 'Error al descontar monedas, intenta de nuevo' });
     }
 
     // ── Acreditar al receptor ATÓMICAMENTE (upsert) ──
@@ -70,7 +83,9 @@ router.post('/send', auth, async (req, res) => {
       { new: true, upsert: true }
     );
 
-    // ── Registrar transacciones (no crítico, no bloquea el flujo) ──
+    console.log('Updated receiver:', updatedReceiver);
+
+    // ── Registrar transacciones ──
     try {
       await Transaction.insertMany([
         {
@@ -89,7 +104,6 @@ router.post('/send', auth, async (req, res) => {
         }
       ]);
     } catch (txErr) {
-      // Si falla el log de transacción, no revertimos — el pago ya se hizo
       console.error('Transaction log error (non-critical):', txErr.message);
     }
 
@@ -102,7 +116,7 @@ router.post('/send', auth, async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Gift error:', err);
+    console.error('Gift error full:', err);
     res.status(500).json({ error: 'Error enviando regalo: ' + err.message });
   }
 });
