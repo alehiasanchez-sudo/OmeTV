@@ -52,7 +52,8 @@ router.post('/send', auth, async (req, res) => {
     const receiverId = new mongoose.Types.ObjectId(String(toUserId));
     const senderId   = new mongoose.Types.ObjectId(String(req.user.userId));
 
-    const creatorAmount  = Math.floor(gift.cost * CREATOR_CUT);
+    // Mínimo 1 moneda al creador para que regalos pequeños (Like = 1) sí lleguen.
+    const creatorAmount  = Math.max(1, Math.floor(gift.cost * CREATOR_CUT));
     const platformAmount = gift.cost - creatorAmount;
 
     // ── Descontar del emisor ATÓMICAMENTE (sólo si tiene saldo) ──
