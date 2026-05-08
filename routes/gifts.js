@@ -10,7 +10,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'ometv_secret_key_2024';
 const CREATOR_CUT = 0.50;
 
 const GIFTS = [
-  { id: 'like',    emoji: '👍', name: 'Like',      cost: 1   },
+  { id: 'like',    emoji: '👍', name: 'Like',      cost: 2   },
   { id: 'rose',    emoji: '🌹', name: 'Rosa',      cost: 10  },
   { id: 'heart',   emoji: '❤️', name: 'Corazón',   cost: 25  },
   { id: 'diamond', emoji: '💎', name: 'Diamante',  cost: 100 },
