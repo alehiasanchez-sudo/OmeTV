@@ -11,11 +11,12 @@ router.post('/register', async (req, res) => {
   try {
     const { username, password, age, gender, country } = req.body;
 
-    if (!username || !password || !age || !gender || !country) {
+    if (!username || !password || age === undefined || age === null || age === '' || !gender || !country) {
       return res.status(400).json({ error: 'Todos los campos son requeridos' });
     }
 
-    if (age < 18) {
+    const ageNum = Number(age);
+    if (!Number.isInteger(ageNum) || ageNum < 18 || ageNum > 120) {
       return res.status(400).json({ error: 'Debes tener al menos 18 años' });
     }
 
@@ -25,7 +26,7 @@ router.post('/register', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ username, password: hashedPassword, age, gender, country });
+    const user = new User({ username, password: hashedPassword, age: ageNum, gender, country });
     await user.save();
 
     const token = jwt.sign(
