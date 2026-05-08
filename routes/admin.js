@@ -200,6 +200,22 @@ router.get('/reports', requireAdmin, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(200)
       .lean();
+
+    // Conteo total de reportes acumulados por cada usuario reportado (todas las fechas / estados).
+    const reportedIds = [...new Set(reports.map(r => r.reportedUser?._id).filter(Boolean).map(String))];
+    const counts = await Report.aggregate([
+      { $match: { reportedUser: { $in: reportedIds.map(id => new mongoose.Types.ObjectId(id)) } } },
+      { $group: { _id: '$reportedUser', total: { $sum: 1 } } }
+    ]);
+    const countsMap = {};
+    counts.forEach(c => { countsMap[String(c._id)] = c.total; });
+
+    reports.forEach(r => {
+      if (r.reportedUser) {
+        r.reportedUser.totalReports = countsMap[String(r.reportedUser._id)] || 0;
+      }
+    });
+
     res.json({ reports });
   } catch (err) {
     console.error('admin/reports:', err);
