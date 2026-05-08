@@ -9,8 +9,10 @@ const Report = require('../models/Report');
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'ometv_secret_key_2024';
 
-// ── Middleware: requiere admin ──
-const requireAdmin = async (req, res, next) => {
+// ── Middlewares: jerarquía owner > admin > user ──
+const ROLE_RANK = { user: 0, admin: 1, owner: 2 };
+
+const requireRole = (minRole) => async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'No autorizado' });
   try {
@@ -18,13 +20,19 @@ const requireAdmin = async (req, res, next) => {
     // Verificar role en DB (no confiar sólo en JWT por si fue degradado).
     const user = await User.findById(decoded.userId).select('role banned');
     if (!user || user.banned) return res.status(403).json({ error: 'Acceso denegado' });
-    if (user.role !== 'admin') return res.status(403).json({ error: 'Se requieren permisos de administrador' });
-    req.user = decoded;
+    const userRank = ROLE_RANK[user.role] ?? 0;
+    if (userRank < ROLE_RANK[minRole]) {
+      return res.status(403).json({ error: `Se requiere rol ${minRole} o superior` });
+    }
+    req.user = { ...decoded, role: user.role };
     next();
   } catch {
     res.status(401).json({ error: 'Token inválido' });
   }
 };
+
+const requireAdmin = requireRole('admin'); // admin y owner
+const requireOwner = requireRole('owner'); // sólo owner
 
 // ── USUARIOS ──
 
@@ -83,33 +91,68 @@ router.post('/users/:id/unban', requireAdmin, async (req, res) => {
   }
 });
 
-// POST /api/admin/users/:id/promote
-router.post('/users/:id/promote', requireAdmin, async (req, res) => {
+// POST /api/admin/users/:id/promote — sólo owner
+router.post('/users/:id/promote', requireOwner, async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, { role: 'admin' }, { new: true });
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json({ success: true, user: { id: user._id, role: user.role } });
+    // Sólo se puede promover a 'admin', no a 'owner' (eso se hace manualmente en DB).
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (target.role === 'owner') return res.status(400).json({ error: 'No se puede modificar a un owner' });
+    target.role = 'admin';
+    await target.save();
+    res.json({ success: true, user: { id: target._id, role: target.role } });
   } catch (err) {
     res.status(500).json({ error: 'Error del servidor' });
   }
 });
 
-// POST /api/admin/users/:id/demote
-router.post('/users/:id/demote', requireAdmin, async (req, res) => {
+// POST /api/admin/users/:id/demote — sólo owner
+router.post('/users/:id/demote', requireOwner, async (req, res) => {
   try {
     if (String(req.params.id) === String(req.user.userId)) {
       return res.status(400).json({ error: 'No puedes degradarte a ti mismo' });
     }
-    const user = await User.findByIdAndUpdate(req.params.id, { role: 'user' }, { new: true });
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json({ success: true, user: { id: user._id, role: user.role } });
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (target.role === 'owner') return res.status(400).json({ error: 'No se puede degradar a un owner' });
+    target.role = 'user';
+    await target.save();
+    res.json({ success: true, user: { id: target._id, role: target.role } });
   } catch (err) {
     res.status(500).json({ error: 'Error del servidor' });
   }
 });
 
-// POST /api/admin/users/:id/coins  body: { delta: number }
-router.post('/users/:id/coins', requireAdmin, async (req, res) => {
+// DELETE /api/admin/users/:id — sólo owner — elimina usuario y sus datos asociados
+router.delete('/users/:id', requireOwner, async (req, res) => {
+  try {
+    if (String(req.params.id) === String(req.user.userId)) {
+      return res.status(400).json({ error: 'No puedes eliminarte a ti mismo' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: 'ID inválido' });
+    }
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (target.role === 'owner') return res.status(400).json({ error: 'No se puede eliminar a un owner' });
+
+    const userId = target._id;
+    await Promise.all([
+      User.deleteOne({ _id: userId }),
+      Coins.deleteOne({ userId }),
+      Report.deleteMany({ $or: [{ reportedBy: userId }, { reportedUser: userId }] }),
+      // Transacciones se conservan para auditoría — no las borramos.
+    ]);
+
+    res.json({ success: true, deleted: target.username });
+  } catch (err) {
+    console.error('admin delete:', err);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
+// POST /api/admin/users/:id/coins  body: { delta: number } — sólo owner
+router.post('/users/:id/coins', requireOwner, async (req, res) => {
   try {
     const { delta } = req.body;
     const deltaNum = Number(delta);
@@ -188,8 +231,8 @@ router.post('/reports/:id/resolve', requireAdmin, async (req, res) => {
 
 // ── TRANSACCIONES ──
 
-// GET /api/admin/transactions?type=purchase&page=1&limit=50
-router.get('/transactions', requireAdmin, async (req, res) => {
+// GET /api/admin/transactions?type=purchase&page=1&limit=50 — sólo owner
+router.get('/transactions', requireOwner, async (req, res) => {
   try {
     const { type, page = 1, limit = 50 } = req.query;
     const filter = type ? { type } : {};
