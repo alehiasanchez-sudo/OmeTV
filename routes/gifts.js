@@ -1,5 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const Coins = require('../models/Coins');
 const Transaction = require('../models/Transaction');
 
@@ -43,65 +44,57 @@ router.post('/send', auth, async (req, res) => {
 
     if (!gift)     return res.status(400).json({ error: 'Regalo inválido' });
     if (!toUserId) return res.status(400).json({ error: 'Receptor requerido' });
+    if (!mongoose.Types.ObjectId.isValid(toUserId))
+      return res.status(400).json({ error: 'ID de receptor inválido' });
     if (String(toUserId) === String(req.user.userId))
       return res.status(400).json({ error: 'No puedes enviarte regalos a ti mismo' });
+
+    const receiverId = new mongoose.Types.ObjectId(String(toUserId));
+    const senderId   = new mongoose.Types.ObjectId(String(req.user.userId));
 
     const creatorAmount  = Math.floor(gift.cost * CREATOR_CUT);
     const platformAmount = gift.cost - creatorAmount;
 
-    // Verificar que el emisor existe y tiene saldo
-    const senderCoins = await Coins.findOne({ userId: req.user.userId });
-    console.log('Sender coins:', senderCoins);
-    
-    if (!senderCoins) {
-      // Crear documento de monedas si no existe
-      await Coins.create({ userId: req.user.userId, balance: 0 });
-      return res.status(400).json({ error: 'No tienes monedas' });
-    }
-    
-    if (senderCoins.balance < gift.cost) {
-      return res.status(400).json({ error: `Monedas insuficientes. Tienes ${senderCoins.balance} 🪙, necesitas ${gift.cost} 🪙` });
-    }
-
-    // ── Descontar del emisor ATÓMICAMENTE ──
+    // ── Descontar del emisor ATÓMICAMENTE (sólo si tiene saldo) ──
     const updatedSender = await Coins.findOneAndUpdate(
-      { userId: req.user.userId, balance: { $gte: gift.cost } },
+      { userId: senderId, balance: { $gte: gift.cost } },
       { $inc: { balance: -gift.cost } },
       { new: true }
     );
 
-    console.log('Updated sender:', updatedSender);
-
     if (!updatedSender) {
-      return res.status(400).json({ error: 'Error al descontar monedas, intenta de nuevo' });
+      // No tiene saldo suficiente (o no tiene documento de monedas todavía).
+      const senderCoins = await Coins.findOne({ userId: senderId });
+      const balance = senderCoins?.balance ?? 0;
+      return res.status(400).json({
+        error: `Monedas insuficientes. Tienes ${balance} 🪙, necesitas ${gift.cost} 🪙`
+      });
     }
 
+    console.log(`[gift] sender=${senderId} balance=${updatedSender.balance} (-${gift.cost})`);
+
     // ── Acreditar al receptor ATÓMICAMENTE (upsert) ──
-    const updatedReceiver = await Coins.findOneAndUpdate(
-      { userId: toUserId },
-      { $inc: { balance: creatorAmount, totalEarned: creatorAmount } },
-      { new: true, upsert: true }
-    );
+    let updatedReceiver;
+    try {
+      updatedReceiver = await Coins.findOneAndUpdate(
+        { userId: receiverId },
+        { $inc: { balance: creatorAmount, totalEarned: creatorAmount } },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+    } catch (creditErr) {
+      // Si falla la acreditación, REVERTIR el descuento del emisor.
+      console.error('[gift] credit failed, refunding sender:', creditErr.message);
+      await Coins.updateOne({ userId: senderId }, { $inc: { balance: gift.cost } });
+      return res.status(500).json({ error: 'No se pudo acreditar al receptor, monedas devueltas' });
+    }
 
-    console.log('Updated receiver:', updatedReceiver);
+    console.log(`[gift] receiver=${receiverId} balance=${updatedReceiver.balance} (+${creatorAmount})`);
 
-    // ── Registrar transacciones ──
+    // ── Registrar transacciones (no crítico) ──
     try {
       await Transaction.insertMany([
-        {
-          fromUser: req.user.userId,
-          toUser: toUserId,
-          type: 'gift_sent',
-          amount: gift.cost,
-          giftType: giftId
-        },
-        {
-          fromUser: req.user.userId,
-          toUser: toUserId,
-          type: 'gift_received',
-          amount: creatorAmount,
-          giftType: giftId
-        }
+        { fromUser: senderId, toUser: receiverId, type: 'gift_sent',     amount: gift.cost,     giftType: giftId },
+        { fromUser: senderId, toUser: receiverId, type: 'gift_received', amount: creatorAmount, giftType: giftId }
       ]);
     } catch (txErr) {
       console.error('Transaction log error (non-critical):', txErr.message);
@@ -111,6 +104,7 @@ router.post('/send', auth, async (req, res) => {
       success: true,
       gift,
       senderBalance: updatedSender.balance,
+      receiverBalance: updatedReceiver.balance,
       creatorReceived: creatorAmount,
       platformReceived: platformAmount
     });
