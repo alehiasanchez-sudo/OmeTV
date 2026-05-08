@@ -10,6 +10,7 @@ const reportRoutes = require('./routes/reports');
 const { router: coinsRouter } = require('./routes/coins');
 const { router: giftsRouter } = require('./routes/gifts');
 const withdrawRouter = require('./routes/withdraw');
+const adminRouter = require('./routes/admin');
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/coins', coinsRouter);
 app.use('/api/gifts', giftsRouter);
 app.use('/api/withdraw', withdrawRouter);
+app.use('/api/admin', adminRouter);
 
 const server = http.createServer(app);
 const io = new Server(server, {

@@ -30,11 +30,11 @@ router.post('/register', async (req, res) => {
     await user.save();
 
     const token = jwt.sign(
-      { userId: user._id, username: user.username, country: user.country, gender: user.gender },
+      { userId: user._id, username: user.username, country: user.country, gender: user.gender, role: user.role },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
-    res.json({ token, user: { id: user._id, username: user.username, country: user.country, gender: user.gender } });
+    res.json({ token, user: { id: user._id, username: user.username, country: user.country, gender: user.gender, role: user.role } });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error del servidor' });
@@ -55,11 +55,11 @@ router.post('/login', async (req, res) => {
     if (!valid) return res.status(400).json({ error: 'Credenciales incorrectas' });
 
     const token = jwt.sign(
-      { userId: user._id, username: user.username, country: user.country, gender: user.gender },
+      { userId: user._id, username: user.username, country: user.country, gender: user.gender, role: user.role },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
-    res.json({ token, user: { id: user._id, username: user.username, country: user.country, gender: user.gender } });
+    res.json({ token, user: { id: user._id, username: user.username, country: user.country, gender: user.gender, role: user.role } });
   } catch (err) {
     res.status(500).json({ error: 'Error del servidor' });
   }
