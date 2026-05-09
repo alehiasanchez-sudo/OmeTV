@@ -72,8 +72,13 @@ router.get('/users', requireAdmin, async (req, res) => {
 // POST /api/admin/users/:id/ban
 router.post('/users/:id/ban', requireAdmin, async (req, res) => {
   try {
+    const target = await User.findById(req.params.id).select('role banned');
+    if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (target.role === 'owner') return res.status(403).json({ error: 'No se puede banear a un owner' });
+    if (target.role === 'admin' && req.user.role !== 'owner') {
+      return res.status(403).json({ error: 'Solo el owner puede banear admins' });
+    }
     const user = await User.findByIdAndUpdate(req.params.id, { banned: true }, { new: true });
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
     res.json({ success: true, user: { id: user._id, banned: user.banned } });
   } catch (err) {
     res.status(500).json({ error: 'Error del servidor' });
@@ -83,8 +88,12 @@ router.post('/users/:id/ban', requireAdmin, async (req, res) => {
 // POST /api/admin/users/:id/unban
 router.post('/users/:id/unban', requireAdmin, async (req, res) => {
   try {
+    const target = await User.findById(req.params.id).select('role');
+    if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+    if (target.role === 'admin' && req.user.role !== 'owner') {
+      return res.status(403).json({ error: 'Solo el owner puede desbanear admins' });
+    }
     const user = await User.findByIdAndUpdate(req.params.id, { banned: false }, { new: true });
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
     res.json({ success: true, user: { id: user._id, banned: user.banned } });
   } catch (err) {
     res.status(500).json({ error: 'Error del servidor' });
@@ -195,6 +204,12 @@ router.post('/reports/:id/resolve', requireAdmin, async (req, res) => {
     if (!report) return res.status(404).json({ error: 'Reporte no encontrado' });
 
     if (action === 'ban') {
+      const target = await User.findById(report.reportedUser).select('role');
+      if (!target) return res.status(404).json({ error: 'Usuario reportado no encontrado' });
+      if (target.role === 'owner') return res.status(403).json({ error: 'No se puede banear a un owner' });
+      if (target.role === 'admin' && req.user.role !== 'owner') {
+        return res.status(403).json({ error: 'Solo el owner puede banear admins' });
+      }
       await User.findByIdAndUpdate(report.reportedUser, { banned: true });
       report.status = 'resolved';
     } else {
