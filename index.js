@@ -16,7 +16,7 @@ const app = express();
 
 const corsOptions = {
   origin: true, // Acepta cualquier origen (apps móviles + web)
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 };
