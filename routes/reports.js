@@ -39,6 +39,7 @@ router.post('/', authMiddleware, async (req, res) => {
         : undefined
     });
     await report.save();
+    console.log(`[Report] ${reportedUserId} | razón=${reason} | captura=${screenshot ? Math.round(screenshot.length / 1024) + 'KB' : 'NO'} | msgs=${Array.isArray(chatSnapshot) ? chatSnapshot.length : 0}`);
     res.json({ message: 'Reporte enviado correctamente' });
   } catch (err) {
     console.error('reports POST:', err);
