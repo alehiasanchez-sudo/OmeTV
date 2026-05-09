@@ -151,42 +151,6 @@ router.delete('/users/:id', requireOwner, async (req, res) => {
   }
 });
 
-// POST /api/admin/users/:id/coins  body: { delta: number } — sólo owner
-router.post('/users/:id/coins', requireOwner, async (req, res) => {
-  try {
-    const { delta } = req.body;
-    const deltaNum = Number(delta);
-    if (!Number.isInteger(deltaNum) || deltaNum === 0) {
-      return res.status(400).json({ error: 'Cantidad inválida' });
-    }
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(400).json({ error: 'ID inválido' });
-    }
-    const userId = new mongoose.Types.ObjectId(String(req.params.id));
-    const updated = await Coins.findOneAndUpdate(
-      { userId },
-      { $inc: { balance: deltaNum, ...(deltaNum > 0 ? { totalEarned: deltaNum } : {}) } },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    );
-    if (updated.balance < 0) {
-      // No permitir balance negativo: revertir
-      await Coins.updateOne({ userId }, { $inc: { balance: -deltaNum } });
-      return res.status(400).json({ error: 'Balance no puede quedar negativo' });
-    }
-    await Transaction.create({
-      fromUser: req.user.userId,
-      toUser: userId,
-      type: deltaNum > 0 ? 'gift_received' : 'gift_sent',
-      amount: Math.abs(deltaNum),
-      giftType: 'admin_adjust'
-    });
-    res.json({ success: true, balance: updated.balance });
-  } catch (err) {
-    console.error('admin/coins:', err);
-    res.status(500).json({ error: 'Error del servidor' });
-  }
-});
-
 // ── REPORTES ──
 
 // GET /api/admin/reports?status=pending
