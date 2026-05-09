@@ -196,6 +196,19 @@ router.get('/reports', requireAdmin, async (req, res) => {
   }
 });
 
+// DELETE /api/admin/reports/:id — elimina el reporte y limpia todos los demás del mismo usuario
+router.delete('/reports/:id', requireAdmin, async (req, res) => {
+  try {
+    const report = await Report.findById(req.params.id).select('reportedUser');
+    if (!report) return res.status(404).json({ error: 'Reporte no encontrado' });
+    const result = await Report.deleteMany({ reportedUser: report.reportedUser });
+    res.json({ success: true, deletedCount: result.deletedCount });
+  } catch (err) {
+    console.error('admin delete report:', err);
+    res.status(500).json({ error: 'Error del servidor' });
+  }
+});
+
 // POST /api/admin/reports/:id/resolve  body: { action: 'ban' | 'dismiss' }
 router.post('/reports/:id/resolve', requireAdmin, async (req, res) => {
   try {

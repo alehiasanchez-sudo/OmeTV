@@ -21,18 +21,27 @@ const authMiddleware = (req, res, next) => {
 // Crear reporte
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { reportedUserId, reason } = req.body;
+    const { reportedUserId, reason, screenshot, chatSnapshot } = req.body;
     if (!reportedUserId || !reason) {
       return res.status(400).json({ error: 'Faltan datos del reporte' });
+    }
+    // Validar que la captura no exceda ~3MB (base64) para evitar abuso
+    if (screenshot && typeof screenshot === 'string' && screenshot.length > 3_500_000) {
+      return res.status(413).json({ error: 'Captura demasiado grande' });
     }
     const report = new Report({
       reportedBy: req.userId,
       reportedUser: reportedUserId,
-      reason
+      reason,
+      screenshot: typeof screenshot === 'string' ? screenshot : undefined,
+      chatSnapshot: Array.isArray(chatSnapshot)
+        ? chatSnapshot.slice(-50).map(m => ({ from: String(m.from || ''), text: String(m.text || '').slice(0, 500) }))
+        : undefined
     });
     await report.save();
     res.json({ message: 'Reporte enviado correctamente' });
   } catch (err) {
+    console.error('reports POST:', err);
     res.status(500).json({ error: 'Error al enviar reporte' });
   }
 });

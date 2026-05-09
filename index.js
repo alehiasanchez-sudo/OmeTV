@@ -22,7 +22,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '5mb' })); // 5MB para soportar capturas en reportes
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ometv_secret_key_2024';
 const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://THEROSARD:Terribles18161993@cluster0.b9honaj.mongodb.net/?appName=Cluster0';
