@@ -35,7 +35,7 @@ router.post('/', authMiddleware, async (req, res) => {
       reason,
       screenshot: typeof screenshot === 'string' ? screenshot : undefined,
       chatSnapshot: Array.isArray(chatSnapshot)
-        ? chatSnapshot.slice(-50).map(m => ({ from: String(m.from || ''), text: String(m.text || '').slice(0, 500) }))
+        ? chatSnapshot.map(m => ({ from: String(m.from || ''), text: String(m.text || '').slice(0, 1000) }))
         : undefined
     });
     await report.save();
